@@ -17,4 +17,4 @@ jobs:
       - name: Update TryHackMe badge
         uses: nahilr/tryhackme-profile-badge-workflow@main
         with:
-          user_public_id: 
+          username: ""

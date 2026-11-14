@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Render a TryHackMe profile badge PNG from a userPublicId.
+"""Render a TryHackMe profile badge PNG from a username or userPublicId.
 
 Usage:
-    python3 thm_badge.py <userPublicId> [output.png]
+    python3 thm_badge.py <username|userPublicId> [output.png]
 """
 
 import base64
@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from curl_cffi import requests
 
@@ -67,33 +68,16 @@ def fetch_badge_html(user_public_id):
     raise RuntimeError("could not fetch badge HTML")
 
 
-def extract_stats(html):
+def extract_identity(html):
     username = (re.search(r'<span class="user_name">([^<]+)</span>', html) or [None, ""])[1].strip()
     rank_hex = (re.search(r'<span class="rank-title">\[([^\]]+)\]</span>', html) or [None, ""])[1].strip()
-    avatar_url = None
-    style_match = re.search(
-        r'\.thm-avatar\s*{[^}]*background-image:\s*url\([\'"]?([^\'")]+)', html, re.I
-    )
-    if style_match:
-        avatar_url = style_match.group(1)
-    if avatar_url and not avatar_url.startswith("http"):
-        avatar_url = "https://cdn-images.tryhackme.com/" + avatar_url.lstrip("/")
-    stats = re.findall(r'<span class="details-text">([^<]+)</span>', html)
-    if len(stats) < 4:
-        raise RuntimeError(f"expected 4 stats, found {len(stats)}")
-    return {
-        "username": username,
-        "rank_hex": rank_hex,
-        "avatar_url": avatar_url,
-        "points": stats[0],
-        "streak": stats[1],
-        "rank": stats[2],
-        "rooms": stats[3],
-    }
+    if not username or not rank_hex:
+        raise RuntimeError("could not parse username/level from badge HTML")
+    return username, rank_hex
 
 
-def fetch_total_points(username):
-    url = f"https://tryhackme.com/api/v2/public-profile?username={username}"
+def fetch_profile(username):
+    url = f"https://tryhackme.com/api/v2/public-profile?username={quote(username)}"
     for attempt in range(5):
         try:
             r = requests.get(url, impersonate="chrome", timeout=30)
@@ -102,7 +86,8 @@ def fetch_total_points(username):
                 time.sleep(3)
                 continue
             r.raise_for_status()
-            return (r.json().get("data") or {}).get("totalPoints")
+            data = r.json().get("data") or {}
+            return data
         except Exception as e:
             print(f"fetch failed ({attempt + 1}/5): {e}")
             time.sleep(2)
@@ -122,8 +107,14 @@ def avatar_data_uri(avatar_url):
         return FALLBACK_AVATAR
 
 
-def build_html(stats, avatar_uri, total_points, rank_hex):
+def build_html(stats, avatar_uri, total_points, rank_hex, top_percentage=None):
     rank = rank_display(rank_hex)
+    pct = (
+        f'<div class="details-icon-wrapper"><i class="fa-solid fa-ranking-star detail-icons pct-icon"></i>'
+        f'<span class="details-text">top {top_percentage}%</span></div>'
+        if isinstance(top_percentage, int) and top_percentage > 0
+        else ""
+    )
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -170,6 +161,7 @@ def build_html(stats, avatar_uri, total_points, rank_hex):
     .door-closed-icon {{ color: #719cf9; font-size: 12px; }}
     .details-text {{ font-family: Ubuntu, sans-serif; font-weight: 400; font-size: 11px; color: #ffffff; }}
     .thm-link {{ font-family: Ubuntu, sans-serif; font-size: 11px; color: #f9f9fb; text-decoration: none; }}
+    .pct-icon {{ color: #a3ea2a; font-size: 11px; }}
   </style>
 </head>
 <body>
@@ -181,12 +173,15 @@ def build_html(stats, avatar_uri, total_points, rank_hex):
         <div><i class="fa-solid fa-bolt-lightning rank-icon"></i><span class="rank-title">{rank}</span></div>
       </div>
       <div class="details-wrapper">
-        <div class="details-icon-wrapper"><i class="fa-solid fa-trophy detail-icons trophy-icon"></i><span class="details-text">{stats['points']}</span></div>
+        <div class="details-icon-wrapper"><i class="fa-solid fa-crosshairs detail-icons crosshair-icon"></i><span class="details-text">{total_points}</span></div>
         <div class="details-icon-wrapper"><i class="fa-solid fa-fire detail-icons fire-icon"></i><span class="details-text">{stats['streak']}</span></div>
-        <div class="details-icon-wrapper"><i class="fa-solid fa-award detail-icons award-icon"></i><span class="details-text">{stats['rank']}</span></div>
+        <div class="details-icon-wrapper"><i class="fa-solid fa-award detail-icons award-icon"></i><span class="details-text">{stats['badges']}</span></div>
         <div class="details-icon-wrapper"><i class="fa-solid fa-door-closed detail-icons door-closed-icon"></i><span class="details-text">{stats['rooms']}</span></div>
       </div>
-      <div class="details-icon-wrapper"><i class="fa-solid fa-crosshairs crosshair-icon"></i><span class="details-text">{total_points} pts</span></div>
+      <div class="details-wrapper">
+        <div class="details-icon-wrapper"><i class="fa-solid fa-trophy detail-icons trophy-icon"></i><span class="details-text">{stats['rank']}</span></div>
+        {pct}
+      </div>
     </div>
   </div>
 </body>
@@ -221,27 +216,62 @@ def render(html, output):
         raise RuntimeError("screenshot was not produced")
 
 
+def level_hex(level):
+    if isinstance(level, int) and level > 0:
+        return f"0x{level:X}"
+    return "0x1"
+
+
 def main():
     if len(sys.argv) < 2:
-        print("usage: thm_badge.py <userPublicId> [output.png]")
+        print("usage: thm_badge.py <username|userPublicId> [output.png]")
         sys.exit(1)
-    user_public_id = sys.argv[1]
+    who = sys.argv[1]
     output = Path(sys.argv[2] if len(sys.argv) > 2 else "thm_badge.png")
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    print("fetching badge html...")
-    html = fetch_badge_html(user_public_id)
-    stats = extract_stats(html)
-    print(f"got {stats['username']} ([{stats['rank_hex']}]) stats: {stats['points']}, {stats['streak']}, {stats['rank']}, {stats['rooms']} rooms")
+    user_public_id, username = (who, None) if who.isdigit() else (None, who)
 
-    print("fetching total points...")
-    total_points = fetch_total_points(stats["username"])
+    if username:
+        print(f"looking up {username}...")
+        profile = fetch_profile(username)
+        username = profile.get("username") or username
+        rank_hex = level_hex(profile.get("level"))
+    else:
+        print("fetching badge html...")
+        html = fetch_badge_html(user_public_id)
+        username, rank_hex = extract_identity(html)
+        print("fetching live profile stats...")
+        profile = fetch_profile(username)
+
+    print(f"got {username} ([{rank_hex}])")
+    stats = {
+        "username": profile.get("username") or username,
+        "rank_hex": rank_hex,
+        "avatar_url": profile.get("avatar"),
+        "rank": profile.get("rank"),
+        "streak": f'{profile.get("streak", 0)} days',
+        "badges": profile.get("badgesNumber"),
+        "rooms": profile.get("completedRoomsNumber"),
+    }
+    total_points = profile.get("totalPoints")
+    top_percentage = profile.get("topPercentage")
+    stat_parts = [
+        f"rank {stats['rank']}",
+        stats["streak"],
+        f"{stats['badges']} badges",
+        f"{stats['rooms']} rooms",
+        f"{total_points} pts",
+    ]
+    if top_percentage:
+        stat_parts.append(f"top {top_percentage}%")
+    print(", ".join(stat_parts))
 
     print("downloading avatar...")
     avatar_uri = avatar_data_uri(stats["avatar_url"])
 
     print("rendering badge...")
-    render(build_html(stats, avatar_uri, total_points, stats["rank_hex"]), output)
+    render(build_html(stats, avatar_uri, total_points, stats["rank_hex"], top_percentage), output)
     print(f"saved {output} ({output.stat().st_size} bytes)")
 
 

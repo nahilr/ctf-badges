@@ -5,9 +5,12 @@ branding:
   color: 'red'
 
 inputs:
+  username:
+    description: 'TryHackMe username (use instead of user_public_id)'
+    required: false
   user_public_id:
-    description: 'TryHackMe user public ID'
-    required: true
+    description: 'TryHackMe user public ID (use instead of username)'
+    required: false
   image_path:
     description: 'Path where the badge PNG is saved'
     required: false
@@ -40,9 +43,16 @@ runs:
     - name: Render badge
       shell: bash
       env:
+        USERNAME: ${{ inputs.username }}
         USER_PUBLIC_ID: ${{ inputs.user_public_id }}
         IMAGE_PATH: ${{ inputs.image_path }}
-      run: python3 "${{ github.action_path }}/thm_badge.py" "$USER_PUBLIC_ID" "$IMAGE_PATH"
+      run: |
+        THM_USER="${USERNAME:-$USER_PUBLIC_ID}"
+        if [ -z "$THM_USER" ]; then
+          echo "::error::Provide either 'username' or 'user_public_id'."
+          exit 1
+        fi
+        python3 "${{ github.action_path }}/thm_badge.py" "$THM_USER" "$IMAGE_PATH"
 
     - name: Commit and push
       shell: bash
