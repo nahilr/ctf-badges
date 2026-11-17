@@ -1,4 +1,4 @@
-name: TryHackMe Badge
+name: Profile Badges
 
 on:
   schedule:
@@ -9,12 +9,13 @@ permissions:
   contents: write
 
 jobs:
-  update-badge:
+  update-badges:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update TryHackMe badge
-        uses: nahilr/tryhackme-profile-badge-workflow@main
+      - name: Update TryHackMe and Hack The Box badges
+        uses: nahilr/ctf-badges@main
         with:
-          username: ""
+          thm_username: "<YOUR_THM_USERNAME>"
+          htb_profile_id: "<YOUR_HTB_PROFILE_ID>"

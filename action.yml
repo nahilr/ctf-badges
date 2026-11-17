@@ -1,20 +1,24 @@
-name: 'TryHackMe Profile Badge Workflow'
-description: 'Render a live TryHackMe profile badge PNG and commit it to your repo'
+name: 'Security Profile Badges'
+description: 'Render live TryHackMe and Hack The Box profile badges and commit them to your repo'
 branding:
   icon: 'award'
   color: 'red'
 
 inputs:
-  username:
-    description: 'TryHackMe username (use instead of user_public_id)'
-    required: false
-  user_public_id:
-    description: 'TryHackMe user public ID (use instead of username)'
-    required: false
-  image_path:
-    description: 'Path where the badge PNG is saved'
+  thm_username:
+    description: 'TryHackMe username'
+    required: true
+  htb_profile_id:
+    description: 'Hack The Box numeric profile id (the number in app.hackthebox.com/users/<id>)'
+    required: true
+  thm_image_path:
+    description: 'Path where the TryHackMe badge PNG is saved'
     required: false
     default: 'assets/thm_badge.png'
+  htb_image_path:
+    description: 'Path where the Hack The Box badge SVG is saved'
+    required: false
+    default: 'assets/htb_badge.svg'
   committer_username:
     description: 'Git username for the commit'
     required: false
@@ -26,7 +30,7 @@ inputs:
   commit_message:
     description: 'Commit message'
     required: false
-    default: 'chore: update tryhackme badge'
+    default: 'chore: update profile badges'
 
 runs:
   using: 'composite'
@@ -40,19 +44,19 @@ runs:
       shell: bash
       run: pip install curl_cffi
 
-    - name: Render badge
+    - name: Render TryHackMe badge
       shell: bash
       env:
-        USERNAME: ${{ inputs.username }}
-        USER_PUBLIC_ID: ${{ inputs.user_public_id }}
-        IMAGE_PATH: ${{ inputs.image_path }}
-      run: |
-        THM_USER="${USERNAME:-$USER_PUBLIC_ID}"
-        if [ -z "$THM_USER" ]; then
-          echo "::error::Provide either 'username' or 'user_public_id'."
-          exit 1
-        fi
-        python3 "${{ github.action_path }}/thm_badge.py" "$THM_USER" "$IMAGE_PATH"
+        THM_USERNAME: ${{ inputs.thm_username }}
+        IMAGE_PATH: ${{ inputs.thm_image_path }}
+      run: python3 "${{ github.action_path }}/thm_badge.py" "$THM_USERNAME" -o "$IMAGE_PATH"
+
+    - name: Render Hack The Box badge
+      shell: bash
+      env:
+        HTB_PROFILE_ID: ${{ inputs.htb_profile_id }}
+        IMAGE_PATH: ${{ inputs.htb_image_path }}
+      run: python3 "${{ github.action_path }}/htb_badge.py" "$HTB_PROFILE_ID" -o "$IMAGE_PATH"
 
     - name: Commit and push
       shell: bash
@@ -60,14 +64,16 @@ runs:
         COMMITTER_USERNAME: ${{ inputs.committer_username }}
         COMMITTER_EMAIL: ${{ inputs.committer_email }}
         COMMIT_MESSAGE: ${{ inputs.commit_message }}
-        IMAGE_PATH: ${{ inputs.image_path }}
+        THM_IMAGE_PATH: ${{ inputs.thm_image_path }}
+        HTB_IMAGE_PATH: ${{ inputs.htb_image_path }}
       run: |
         git config user.name "$COMMITTER_USERNAME"
         git config user.email "$COMMITTER_EMAIL"
-        if git diff --quiet -- "$IMAGE_PATH" && git ls-files --error-unmatch -- "$IMAGE_PATH" >/dev/null 2>&1; then
-          echo "Badge unchanged, skipping commit."
+        if git diff --quiet -- "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH" \
+          && git ls-files --error-unmatch -- "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH" >/dev/null 2>&1; then
+          echo "Badges unchanged, skipping commit."
           exit 0
         fi
-        git add "$IMAGE_PATH"
+        git add "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH"
         git commit -m "$COMMIT_MESSAGE"
         git push

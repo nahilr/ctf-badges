@@ -7,9 +7,9 @@ binary search: probe an ID, read that user's join date via the public profile
 API, and compare it against the target username's join date to halve the range.
 
 Usage:
-    python3 find_user_id.py <username> [low] [high]
-    python3 find_user_id.py <your_username>
-    python3 find_user_id.py <your_username> 100000 8600000
+    python3 thm_find_user_id.py <username> [low] [high]
+    python3 thm_find_user_id.py <your_username>
+    python3 thm_find_user_id.py <your_username> 100000 8600000
 """
 
 import re
@@ -130,7 +130,7 @@ def find_user_public_id(username, low, high):
 
 def main():
     if len(sys.argv) < 2:
-        print("usage: find_user_id.py <username> [low] [high]")
+        print("usage: thm_find_user_id.py <username> [low] [high]")
         sys.exit(1)
     username = sys.argv[1]
     low = int(sys.argv[2]) if len(sys.argv) > 2 else DEFAULT_LOW

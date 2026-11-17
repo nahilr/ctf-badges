@@ -2,13 +2,13 @@
 """Render a TryHackMe profile badge PNG from a username or userPublicId.
 
 Usage:
-    python3 thm_badge.py <username|userPublicId> [output.png]
+    python3 thm_badge.py <username|userPublicId> -o assets/thm_badge.png
 """
 
+import argparse
 import base64
 import re
 import subprocess
-import sys
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -222,12 +222,25 @@ def level_hex(level):
     return "0x1"
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("usage: thm_badge.py <username|userPublicId> [output.png]")
-        sys.exit(1)
-    who = sys.argv[1]
-    output = Path(sys.argv[2] if len(sys.argv) > 2 else "thm_badge.png")
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Render a TryHackMe profile badge PNG.",
+        epilog="Examples:\n"
+               "  thm_badge.py 0xnhl\n"
+               "  thm_badge.py 0xnhl -o assets/thm_badge.png",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("username",
+                        help="TryHackMe username (or numeric userPublicId)")
+    parser.add_argument("-o", "--out", default="thm_badge.png",
+                        help="output path (default: thm_badge.png)")
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    who = args.username
+    output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     user_public_id, username = (who, None) if who.isdigit() else (None, who)
