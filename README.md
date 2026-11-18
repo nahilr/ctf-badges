@@ -6,19 +6,24 @@ them yourself.
 
 | Provider | Script | Output | Stats |
 |---|---|---|---|
-| TryHackMe | `thm_badge.py` | `329x88` PNG | Level, rooms, badges, streak, global rank, points, top % |
-| Hack The Box | `htb_badge.py` | `329x88` SVG | Level, XP, machines pwned, rank, name, avatar |
+| TryHackMe | `thm/badge.py` | `329x88` SVG | Level, rooms, badges, streak, global rank, points, top % |
+| Hack The Box | `htb/badge.py` | `329x88` SVG | Level, XP, machines pwned, rank, name, avatar |
 
 Everything is read from public endpoints. No API key, no login, no secrets.
 
 ```
 .
 ├── action.yml                # composite action: renders both badges (root-only)
-├── thm_badge.py              # TryHackMe → PNG
-├── htb_badge.py              # Hack The Box → SVG
-├── thm_find_user_id.py       # optional numeric TryHackMe ID lookup
-└── .github/workflows/
-    └── example.yml           # sample daily schedule
+├── requirements.txt          # curl_cffi + pillow
+├── thm/
+│   ├── badge.py              # TryHackMe → SVG
+│   ├── find_user_id.py       # optional numeric TryHackMe ID lookup
+│   ├── glyphs.json           # Ubuntu text outlines
+│   └── icons.json            # Font Awesome icon outlines
+├── htb/
+│   └── badge.py              # Hack The Box → SVG
+└── examples/
+    └── profile-badges.yml    # sample workflow (copy to .github/workflows)
 ```
 
 ## Setup
@@ -64,7 +69,7 @@ Privacy).
 4. **Add both badges** to your README:
 
 ```markdown
-![tryhackme stats](https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/thm_badge.png)
+![tryhackme stats](https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/thm_badge.svg)
 ![hackthebox stats](https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/htb_badge.svg)
 ```
 
@@ -74,7 +79,7 @@ TryHackMe username, and `<SET_HTB_PROFILE_ID>` with the numeric id):
 
 ```html
 <a href="https://tryhackme.com/p/<SET_THM_USERNAME>" target="_blank">
-  <img src="https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/thm_badge.png" alt="tryhackme stats">
+  <img src="https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/thm_badge.svg" alt="tryhackme stats">
 </a>
 <a href="https://app.hackthebox.com/users/<SET_HTB_PROFILE_ID>" target="_blank">
   <img src="https://raw.githubusercontent.com/<SET_USERNAME_HERE>/<SET_USERNAME_HERE>/main/assets/htb_badge.svg" alt="hackthebox stats">
@@ -89,7 +94,7 @@ TryHackMe username, and `<SET_HTB_PROFILE_ID>` with the numeric id):
 |---|---|---|
 | `thm_username` | TryHackMe username | required |
 | `htb_profile_id` | Hack The Box numeric profile id | required |
-| `thm_image_path` | Where the TryHackMe PNG is saved | `assets/thm_badge.png` |
+| `thm_image_path` | Where the TryHackMe SVG is saved | `assets/thm_badge.svg` |
 | `htb_image_path` | Where the Hack The Box SVG is saved | `assets/htb_badge.svg` |
 | `committer_username` | Git username for the commit | `github-actions[bot]` |
 | `committer_email` | Git email for the commit | `41898282+github-actions[bot]@users.noreply.github.com` |
@@ -100,7 +105,7 @@ TryHackMe username, and `<SET_HTB_PROFILE_ID>` with the numeric id):
   with:
     thm_username: '<YOUR_THM_USERNAME>'
     htb_profile_id: '<YOUR_HTB_PROFILE_ID>'
-    thm_image_path: 'assets/custom_thm_badge.png'
+    thm_image_path: 'assets/custom_thm_badge.svg'
     htb_image_path: 'assets/custom_htb_badge.svg'
     committer_username: 'github-actions[bot]'
     committer_email: '41898282+github-actions[bot]@users.noreply.github.com'
@@ -117,7 +122,7 @@ skips the commit so your history stays clean.
 
 ### TryHackMe badge
 
-The action renders a `329x88` PNG that mirrors TryHackMe's official design. Stats
+The action renders a `329x88` SVG that mirrors TryHackMe's official design. Stats
 come from the public profile JSON:
 
 - **Profile JSON** — `https://tryhackme.com/api/v2/public-profile?username=<you>` returns your stats as JSON: rank, rooms, badges, points, level, top percentage, avatar, and league tier. This is the only endpoint the action calls.
@@ -131,8 +136,8 @@ reproduces a real Chrome TLS handshake, which the checkpoint accepts.
 Here's what happens on each run:
 
 1. **Fetch the live profile JSON** and take every displayed stat from it: rank, streak, badges, rooms, total points, top percentage, and avatar. The badge API's counters lag (its room count can trail the profile by several rooms). Your rank title (e.g. `0xA`) is looked up from a hex-to-name map, since the profile API doesn't return a readable rank name.
-2. **Embed your avatar as a base64 data URI.** The avatar is downloaded once and inlined into the HTML page, so rendering makes zero external requests — fully self-contained.
-3. **Render the badge to PNG** with headless Chromium — the action builds a self-contained HTML page, injects the avatar and extra stats, then screenshots it at `329x88`.
+2. **Draw the card in SVG.** The official background artwork is fetched once and inlined; the avatar is reduced to one 180×180 frame and embedded as a base64 PNG. Text is rendered as vector outlines (Ubuntu), and the seven icons are Font Awesome outlines, so the badge needs no fonts or network when displayed.
+3. **Write the SVG.** No browser, no screenshot: the file is pure markup, sharp at any DPI and ~150 KB (mostly the two inlined images).
 
 On top of what TryHackMe's own badge shows (level, rooms, badges, streak, global
 rank), this badge adds **total points** and your **top-percentage bracket** (e.g.
@@ -175,7 +180,7 @@ profile id — the script chains that lookup for you.
 
 The action never needs a TryHackMe ID — usernames are enough. The numeric
 `userPublicId` only matters for TryHackMe's own embed badge, which is keyed on
-it, and for rendering locally from an ID. `thm_find_user_id.py` recovers it.
+it, and for rendering locally from an ID. `thm/find_user_id.py` recovers it.
 
 TryHackMe's public API is username-only and the ID is no longer shown in its
 UI, but IDs are assigned incrementally at signup. The script binary-searches the
@@ -185,8 +190,8 @@ minutes on a cold run.
 
 ```bash
 pip install curl_cffi
-python3 thm_find_user_id.py <your_tryhackme_username>                 # range 1 … 8600000
-python3 thm_find_user_id.py <your_tryhackme_username> 100000 4000000  # custom range
+python3 thm/find_user_id.py <your_tryhackme_username>                 # range 1 … 8600000
+python3 thm/find_user_id.py <your_tryhackme_username> 100000 4000000  # custom range
 ```
 
 It prints the ID and the command to render a badge with it. With the ID you can
@@ -205,19 +210,18 @@ also embed TryHackMe's official badge without rendering anything:
 git clone https://github.com/nahilr/ctf-badges.git
 cd ctf-badges
 
-# TryHackMe — needs curl_cffi and a Chrome/Chromium binary
-pip install curl_cffi
-python3 thm_badge.py <your_thm_username> -o assets/thm_badge.png
+# TryHackMe — needs curl_cffi + pillow
+pip install curl_cffi pillow
+python3 thm/badge.py <your_thm_username> -o assets/thm_badge.svg
 
 # Hack The Box — standard library only
-python3 htb_badge.py <your_htb_profile_id> -o assets/htb_badge.svg
+python3 htb/badge.py <your_htb_profile_id> -o assets/htb_badge.svg
 
 # Optional: numeric TryHackMe ID (same curl_cffi install)
-python3 thm_find_user_id.py <your_thm_username>
+python3 thm/find_user_id.py <your_thm_username>
 ```
 
-The TryHackMe renderer requires `google-chrome`, `chromium`, or
-`chromium-browser` on PATH (GitHub Actions runners have Chrome preinstalled).
+The TryHackMe renderer needs `curl_cffi` and `Pillow`. No browser is involved.
 The HTB generator has no dependencies beyond Python 3.9+.
 
 ### Script options
@@ -227,8 +231,8 @@ output path:
 
 | Script | First argument | Default output | Extra |
 |---|---|---|---|
-| `thm_badge.py` | TryHackMe username (or numeric ID) | `thm_badge.png` | — |
-| `htb_badge.py` | Hack The Box numeric profile id | `htb_badge.svg` | `--theme dark\|light` |
+| `thm/badge.py` | TryHackMe username (or numeric ID) | `thm_badge.svg` | — |
+| `htb/badge.py` | Hack The Box numeric profile id | `htb_badge.svg` | `--theme dark\|light` |
 
 ## Project Background
 
@@ -244,13 +248,19 @@ challenge. Its static mode depended on
 been frozen since 2024.
 
 This version uses `curl_cffi` to fetch the current badge HTML and profile data
-with a Chrome-like TLS handshake. It then renders the badge with headless
-Chromium and commits the resulting PNG to your repository. In addition to the
-official badge stats, it adds total points from the public profile API.
+with a Chrome-like TLS handshake, then renders the badge as SVG from committed
+glyph outlines. In addition to the official badge stats, it adds total points
+from the public profile API.
 
-The Hack The Box generator was added alongside it and takes the opposite
-approach: no browser, no dependencies, just a handful of public JSON endpoints
-rendered into SVG. One action now updates both.
+The Hack The Box generator was added alongside it and takes the same approach:
+no browser, just a handful of public JSON endpoints rendered into SVG. One
+action now updates both.
+
+## Credits
+
+- TryHackMe background artwork and marks belong to TryHackMe; this project is unofficial.
+- Text outlines in `thm/glyphs.json` are derived from the **Ubuntu** font (Ubuntu Font Licence).
+- Icon outlines in `thm/icons.json` are from **Font Awesome Free 6.5.0** (icons CC BY 4.0, fonts SIL OFL 1.1).
 
 ## AI Disclosure
 

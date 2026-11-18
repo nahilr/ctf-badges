@@ -12,9 +12,9 @@ inputs:
     description: 'Hack The Box numeric profile id (the number in app.hackthebox.com/users/<id>)'
     required: true
   thm_image_path:
-    description: 'Path where the TryHackMe badge PNG is saved'
+    description: 'Path where the TryHackMe badge SVG is saved'
     required: false
-    default: 'assets/thm_badge.png'
+    default: 'assets/thm_badge.svg'
   htb_image_path:
     description: 'Path where the Hack The Box badge SVG is saved'
     required: false
@@ -42,21 +42,21 @@ runs:
 
     - name: Install dependencies
       shell: bash
-      run: pip install curl_cffi
+      run: pip install -r "${{ github.action_path }}/requirements.txt"
 
     - name: Render TryHackMe badge
       shell: bash
       env:
         THM_USERNAME: ${{ inputs.thm_username }}
         IMAGE_PATH: ${{ inputs.thm_image_path }}
-      run: python3 "${{ github.action_path }}/thm_badge.py" "$THM_USERNAME" -o "$IMAGE_PATH"
+      run: python3 "${{ github.action_path }}/thm/badge.py" "$THM_USERNAME" -o "$IMAGE_PATH"
 
     - name: Render Hack The Box badge
       shell: bash
       env:
         HTB_PROFILE_ID: ${{ inputs.htb_profile_id }}
         IMAGE_PATH: ${{ inputs.htb_image_path }}
-      run: python3 "${{ github.action_path }}/htb_badge.py" "$HTB_PROFILE_ID" -o "$IMAGE_PATH"
+      run: python3 "${{ github.action_path }}/htb/badge.py" "$HTB_PROFILE_ID" -o "$IMAGE_PATH"
 
     - name: Commit and push
       shell: bash
