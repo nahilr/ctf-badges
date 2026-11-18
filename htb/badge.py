@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""htb_badge.py — render a minimal Hack The Box profile badge as SVG.
+"""Render a minimal Hack The Box profile badge as SVG.
 
 Reads only public endpoints (no API token), writes a self-contained 329x88 SVG
 that matches the dimensions of the TryHackMe badge.
 
-    python3 htb_badge.py 1965095 -o assets/htb_badge.svg
+    python3 htb/badge.py 1965095 -o assets/htb_badge.svg
 """
 
 from __future__ import annotations
@@ -53,6 +53,17 @@ CUBE_PATH = (
 CUBE_W, CUBE_H = 28.3636, 32.0
 CUBE_SCALE = 0.95
 
+# Font Awesome 6.5 glyphs for the secondary metrics (points / respect).
+ICON_UPEM = 512
+CROSSHAIRS_ADV = 512
+CROSSHAIRS_PATH = (
+    "M256 448Q270 448 279 439Q288 430 288 416V406Q360 394 409 345Q458 295 470 224H480Q494 224 503 215Q512 206 512 192Q512 178 503 169Q494 160 480 160H470Q458 88 409 39Q359 -10 288 -22V-32Q288 -46 279 -55Q270 -64 256 -64Q242 -64 233 -55Q224 -46 224 -32V-22Q152 -10 103 39Q54 88 42 160H32Q18 160 9 169Q0 178 0 192Q0 206 9 215Q18 224 32 224H42Q54 296 103 345Q152 394 224 406V416Q224 430 233 439Q242 448 256 448ZM107 160Q117 116 149 85Q180 53 224 43V64Q224 78 233 87Q242 96 256 96Q270 96 279 87Q288 78 288 64V43Q332 53 363 85Q395 116 405 160H384Q370 160 361 169Q352 178 352 192Q352 206 361 215Q370 224 384 224H405Q395 268 363 299Q332 331 288 341V320Q288 306 279 297Q270 288 256 288Q242 288 233 297Q224 306 224 320V341Q180 331 149 299Q117 268 107 224H128Q142 224 151 215Q160 206 160 192Q160 178 151 169Q142 160 128 160H107ZM256 224Q270 224 279 215Q288 206 288 192Q288 178 279 169Q270 160 256 160Q242 160 233 169Q224 178 224 192Q224 206 233 215Q242 224 256 224Z"
+)
+STAR_ADV = 576
+STAR_PATH = (
+    "M317 430Q308 447 288 448Q269 447 259 430L195 298L51 276Q32 273 26 255Q20 236 34 222L138 119L113 -27Q111 -46 126 -58Q142 -69 160 -60L288 8L417 -60Q434 -69 450 -58Q466 -46 463 -27L439 119L543 222Q556 236 551 255Q544 273 525 276L381 298L317 430Z"
+)
+
 
 class BadgeError(Exception):
     """Anything the user can act on: bad id, private profile, network failure."""
@@ -91,6 +102,8 @@ class Stats:
     challenges_owned: int
     challenges_total: int
     respect: int
+    points: int
+    ranking: int | None
     avatar_url: str
     avatar_b64: str | None = field(default=None, repr=False)
 
@@ -158,6 +171,8 @@ def fetch_stats(profile_id: int) -> Stats:
         challenges_owned=int(challenges.get("challenge_owns", {}).get("solved") or 0),
         challenges_total=int(challenges.get("challenge_owns", {}).get("total") or 0),
         respect=int(profile.get("respects") or 0),
+        points=int(profile.get("points") or 0),
+        ranking=int(profile["ranking"]) if profile.get("ranking") else None,
         avatar_url=avatar_url,
         avatar_b64=_embed_avatar(avatar_url),
     )
@@ -218,21 +233,27 @@ def render_svg(stats: Stats, theme: Theme) -> str:
     name = _esc(stats.name)
     rank = _esc(stats.rank.upper())
 
-    cube_x = W - 14 - CUBE_W * CUBE_SCALE
-    cube_y = (H - CUBE_H * CUBE_SCALE) / 2
-    text_limit = cube_x - 10
+    cube_w = CUBE_W * CUBE_SCALE
+    cube_x = W - 12 - cube_w
+    cube_y = 8.0
+    # The logo lives in the top-right, so only the name line has to avoid it.
+    text_limit = W - 14
+    name_limit = cube_x - 8
 
-    name_size, rank_size = 16.0, 9.5
-    name_x, name_y, rank_y = TEXT_X, 33.0, 32.4
+    name_size, title_size, rank_size = 16.0, 12.5, 10.5
+    name_x, name_y = TEXT_X, 33.0
     # Shrink unusually long names instead of letting them run under the cube.
     name_w = _advance(name, name_size)
-    max_name_w = text_limit - name_x - 4
+    max_name_w = name_limit - name_x - 4
     if name_w > max_name_w:
         name_size = max(10.0, name_size * max_name_w / name_w)
         name_w = _advance(name, name_size)
-    rank_x = name_x + name_w + 9
-    # Drop the rank label rather than let it run into the cube mark.
-    show_rank = rank_x + _advance(rank, rank_size, tracking=0.4) <= text_limit
+    title_x = name_x + name_w + 9
+    title_w = _advance(rank, title_size, tracking=0.3)
+    rank_no = f"#{stats.ranking}" if stats.ranking else ""
+    rank_x = title_x + title_w + 7
+    show_title = title_x + title_w <= name_limit
+    show_rank_no = bool(rank_no) and show_title and rank_x + _advance(rank_no, rank_size) <= name_limit
 
     # Stat line: LVL n . X XP . N pwned — drop trailing segments until it fits.
     accent, text_c, dim, sep = theme.accent, theme.text, theme.dim, theme.sep
@@ -264,13 +285,50 @@ def render_svg(stats: Stats, theme: Theme) -> str:
         f'clip-path="url(#avatarClip)"/>'
     ) if avatar_src else ""
 
+    title_label = (
+        f'\n  <text x="{title_x:.1f}" y="{name_y}" font-family="{FONT}" '
+        f'font-size="{title_size}" font-weight="700" letter-spacing="0.3" '
+        f'fill="{theme.text}">{rank}</text>'
+    ) if show_title else ""
     rank_label = (
-        f'\n  <text x="{rank_x:.1f}" y="{rank_y}" font-family="{FONT}" '
-        f'font-size="{rank_size}" font-weight="600" letter-spacing="0.4" '
-        f'fill="{theme.dim}">{rank}</text>'
-    ) if show_rank else ""
+        f'\n  <text x="{rank_x:.1f}" y="{name_y}" font-family="{FONT}" '
+        f'font-size="{rank_size}" font-weight="600" '
+        f'fill="{theme.dim}">{rank_no}</text>'
+    ) if show_rank_no else ""
 
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="{name}: {stats.rank}, level {stats.level}, {_num(stats.xp_total)} XP, {stats.machines_owned} machines owned">
+    # Secondary metrics, on the site line after the domain.
+    site_size, metric_size = 9.5, 10.0
+    site = "hackthebox.com"
+    site_w = len(site) * (site_size * CHAR_W + 0.3)
+    metrics = [
+        (CROSSHAIRS_PATH, CROSSHAIRS_ADV, "#4fb3e8", _compact(stats.points)),
+        (STAR_PATH, STAR_ADV, "#f0a93b", _compact(stats.respect)),
+    ]
+    metric_gap = 12
+    block_w = sum(adv * metric_size / ICON_UPEM + 4 + _advance(label, metric_size)
+                  for _, adv, _, label in metrics) + metric_gap * (len(metrics) - 1)
+    metric_x = TEXT_X + site_w + 18
+    if metric_x + block_w > text_limit:
+        metric_x = text_limit - block_w
+    metric_parts = []
+    for index, (path, adv, color, label) in enumerate(metrics):
+        if index:
+            metric_x += metric_gap
+        scale = metric_size / ICON_UPEM
+        metric_parts.append(
+            f'<g fill="{color}" transform="translate({metric_x:.1f} 73) '
+            f'scale({scale:.6f} {-scale:.6f})"><path d="{path}"/></g>')
+        metric_x += adv * scale + 4
+        metric_parts.append(
+            f'<text x="{metric_x:.1f}" y="73" font-family="{FONT}" '
+            f'font-size="{metric_size}" font-weight="600" fill="{theme.text}">{label}</text>')
+        metric_x += _advance(label, metric_size)
+    site_label = (
+        f'\n  <text x="{name_x}" y="73" font-family="{FONT}" font-size="{site_size}" '
+        f'font-weight="700" letter-spacing="0.3" fill="{theme.accent}">{site}</text>'
+    )
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-label="{name}: {stats.rank}, rank {stats.ranking or 'unranked'}, level {stats.level}, {_num(stats.xp_total)} XP, {stats.machines_owned} machines owned, {_num(stats.points)} points, {_num(stats.respect)} respect">
   <title>{name} on Hack The Box</title>
   <defs>
     <clipPath id="avatarClip">
@@ -280,9 +338,9 @@ def render_svg(stats: Stats, theme: Theme) -> str:
   <rect x="0.5" y="0.5" width="{W - 1}" height="{H - 1}" rx="8" fill="{theme.bg}" stroke="{theme.border}"/>
   {avatar}
   <rect x="{avatar_x + 0.5}" y="{avatar_y + 0.5}" width="{AVATAR - 1}" height="{AVATAR - 1}" rx="8" fill="none" stroke="{theme.sep}"/>
-  <text x="{name_x}" y="{name_y}" font-family="{FONT}" font-size="{name_size}" font-weight="700" fill="{theme.text}">{name}</text>{rank_label}
-  <text y="53.5" font-family="{FONT}">{stat_line}</text>
-  <text x="{name_x}" y="73" font-family="{FONT}" font-size="9.5" font-weight="700" letter-spacing="0.3" fill="{theme.accent}">hackthebox.com</text>
+  <text x="{name_x}" y="{name_y}" font-family="{FONT}" font-size="{name_size}" font-weight="700" fill="{theme.text}">{name}</text>{title_label}{rank_label}
+  <text y="53.5" font-family="{FONT}">{stat_line}</text>{site_label}
+  {"".join(metric_parts)}
   <g transform="translate({cube_x:.1f} {cube_y:.1f}) scale({CUBE_SCALE})">
     <path fill-rule="evenodd" clip-rule="evenodd" fill="{theme.accent}" d="{CUBE_PATH}"/>
   </g>
@@ -294,8 +352,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Render a minimal Hack The Box profile badge as SVG.",
         epilog="Examples:\n"
-               "  htb_badge.py 1965095\n"
-               "  htb_badge.py 1965095 -o assets/htb_badge.svg --theme light",
+               "  htb/badge.py 1965095\n"
+               "  htb/badge.py 1965095 -o assets/htb_badge.svg --theme light",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("profile", help="numeric Hack The Box profile id")

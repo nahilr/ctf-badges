@@ -7,7 +7,7 @@ them yourself.
 | Provider | Script | Output | Stats |
 |---|---|---|---|
 | TryHackMe | `thm/badge.py` | `329x88` SVG | Level, rooms, badges, streak, global rank, points, top % |
-| Hack The Box | `htb/badge.py` | `329x88` SVG | Level, XP, machines pwned, rank, name, avatar |
+| Hack The Box | `htb/badge.py` | `329x88` SVG | Level, XP, pwned, ranking, points, respect |
 
 Everything is read from public endpoints. No API key, no login, no secrets.
 
@@ -153,22 +153,25 @@ README. It runs on the standard library alone, so the action needs nothing extra
 for it.
 
 HTB already serves a badge at `hackthebox.com/badge/image/<id>`. It is 220×50,
-auto-updating, and shows rank / respect / owns — but it renders a row of `0`s for
-anyone who hasn't owned machines yet, and it ignores the level + XP you earn
-elsewhere on the platform.
+auto-updating, and shows the global ranking (once you have one) plus **points**
+and **respect** — the `0`s it renders early on are those two, not machine owns.
+It ignores level, XP, and machines owned.
 
-This generator keeps the same idea, in the TryHackMe badge's dimensions, and
-swaps the zero-noise icons for the numbers that are actually meaningful early on:
+This generator keeps the name / rank / avatar / branding and shows the same
+points and respect on the footer, with the global ranking beside the rank title —
+in the TryHackMe badge's dimensions:
 
 ```
+0xnhl  NOOB  #45548
 LVL 9 · 1,980 XP · 0 pwned
+hackthebox.com   ✛ 120  ★ 32
 ```
 
 Data comes from these public endpoints under `https://labs.hackthebox.com`:
 
 | Badge element | Endpoint |
 |---|---|
-| Name, rank, respect, avatar, `account_id` | `/api/v4/profile/{id}` |
+| Name, rank, ranking, points, respect, avatar, `account_id` | `/api/v4/profile/{id}` |
 | Level, total XP | `/api/experience/v1/account/{account_id}` |
 | Machines owned | `/api/v4/profile/progress/machines/{id}` |
 | Challenges owned | `/api/v4/profile/progress/challenges/{id}` |
