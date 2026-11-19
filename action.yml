@@ -44,7 +44,11 @@ runs:
       shell: bash
       run: pip install -r "${{ github.action_path }}/requirements.txt"
 
+    # GitHub-hosted runners get an HTTP 429 anti-bot challenge from
+    # tryhackme.com, so this step fails there. Keep going so the HTB badge
+    # still renders and the existing THM SVG is left untouched.
     - name: Render TryHackMe badge
+      continue-on-error: true
       shell: bash
       env:
         THM_USERNAME: ${{ inputs.thm_username }}
@@ -69,11 +73,20 @@ runs:
       run: |
         git config user.name "$COMMITTER_USERNAME"
         git config user.email "$COMMITTER_EMAIL"
-        if git diff --quiet -- "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH" \
-          && git ls-files --error-unmatch -- "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH" >/dev/null 2>&1; then
+
+        changed=0
+        for image in "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH"; do
+          [ -f "$image" ] || continue
+          git add "$image"
+          if ! git diff --cached --quiet -- "$image"; then
+            changed=1
+          fi
+        done
+
+        if [ "$changed" -eq 0 ]; then
           echo "Badges unchanged, skipping commit."
           exit 0
         fi
-        git add "$THM_IMAGE_PATH" "$HTB_IMAGE_PATH"
+
         git commit -m "$COMMIT_MESSAGE"
         git push

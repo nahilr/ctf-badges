@@ -1,5 +1,10 @@
 # Security Profile Badges
 
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/nahilr/ctf-badges)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/github/license/nahilr/ctf-badges)](https://github.com/nahilr/ctf-badges/blob/main/LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/nahilr/ctf-badges)](https://github.com/nahilr/ctf-badges/commits/main)
+
 One GitHub Action that renders **both** badges from public profile data and
 commits them to your repo — plus the two standalone scripts if you'd rather run
 them yourself.
@@ -10,6 +15,10 @@ them yourself.
 | Hack The Box | `htb/badge.py` | `329x88` SVG | Level, XP, pwned, ranking, points, respect |
 
 Everything is read from public endpoints. No API key, no login, no secrets.
+
+## Preview
+
+<img src="https://raw.githubusercontent.com/nahilr/nahilr/main/assets/thm_badge.svg" alt="tryhackme stats"> <img src="https://raw.githubusercontent.com/nahilr/nahilr/main/assets/htb_badge.svg" alt="hackthebox stats">
 
 ```
 .
@@ -86,7 +95,9 @@ TryHackMe username, and `<SET_HTB_PROFILE_ID>` with the numeric id):
 </a>
 ```
 
-5. **Run the action** — go to your repo's **Actions** tab → **Profile Badges** → **Run workflow**. After the first run, both badges show in your README and refresh every 24 hours.
+5. **Run the action** — go to your repo's **Actions** tab → **Profile Badges** → **Run workflow**. After the first run, the Hack The Box badge refreshes every 24 hours; the TryHackMe badge refreshes wherever you can reach tryhackme.com (see the note below).
+
+> **GitHub-hosted runners can't fetch TryHackMe.** tryhackme.com answers datacenter IPs with an HTTP `429` anti-bot challenge — every client gets the challenge page, even with Chrome TLS impersonation, and headless Chrome doesn't get through either. The action therefore marks the TryHackMe step `continue-on-error`: the Hack The Box badge still renders and commits, and your existing TryHackMe SVG is left untouched (it stops updating, it doesn't break). To refresh TryHackMe, run `thm/badge.py` from a residential connection or a self-hosted runner — do that once before the first hosted run, otherwise the image in your README has nothing to point at. The hosted workflow keeps HTB current either way.
 
 ## Inputs
 
@@ -131,7 +142,9 @@ come from the public profile JSON:
 Both sit behind Vercel's anti-bot challenge, which serves a JavaScript checkpoint
 page to any non-browser TLS fingerprint — plain `requests` or `urllib` get
 blocked instantly. Every fetch therefore goes through a `curl_cffi` helper that
-reproduces a real Chrome TLS handshake, which the checkpoint accepts.
+reproduces a real Chrome TLS handshake, which is enough to get through the
+checkpoint from a residential connection. It does not help on GitHub-hosted
+runners, where the block is IP-based: see the note in [Setup](#setup).
 
 Here's what happens on each run:
 
